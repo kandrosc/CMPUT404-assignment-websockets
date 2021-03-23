@@ -37,7 +37,6 @@
             var debugDiv = document.getElementById('debug');
             debugDiv.innerHTML = "" + str;
         }
-        debug("Test");
 
         world = {};
 
@@ -280,7 +279,6 @@
             };
             socket.onmessage = function (msg) {
                 try {
-                    //debug("WebSocket Recv:" + msg.data);
                     if (msg.data == "{}"){world = {};}
                     else {updateWorld(JSON.parse(msg.data))};
                     //XXX: TODO What are you going to do here?

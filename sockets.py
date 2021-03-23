@@ -16,6 +16,7 @@
 import flask
 from flask import Flask, request, redirect
 from flask_sockets import Sockets
+from geventwebsocket.exceptions import WebSocketError
 import gevent
 from gevent import queue
 import time
@@ -30,10 +31,10 @@ class World:
     def __init__(self):
         self.clear()
         # we've got listeners now!
-        self.listeners = list()
+        self.listeners = dict()
         
-    def add_set_listener(self, listener):
-        self.listeners.append( listener )
+    def add_set_listener(self, client, listener):
+        self.listeners[client] = listener
 
     def update(self, entity, key, value):
         entry = self.space.get(entity,dict())
@@ -47,43 +48,80 @@ class World:
 
     def update_listeners(self, entity):
         '''update the set listeners'''
-        for listener in self.listeners:
-            listener(entity, self.get(entity))
+        for ws in self.listeners:
+            listener = self.listeners[ws]
+            listener(ws,entity, self.get(entity))
+
+    # Used to send a 'clear' signal to all websockets so that clearing the world clears world for all browsers
+    def clear_listeners(self):
+        for ws in self.listeners:
+            listener = self.listeners[ws]
+            listener(ws)
 
     def clear(self):
         self.space = dict()
 
     def get(self, entity):
         return self.space.get(entity,dict())
+
+    # Remove a listener (used when the websocekt closes)
+    def remove_set_listener(self,client):
+        try: del self.listeners[client]
+        except KeyError: pass
     
     def world(self):
         return self.space
 
+    # Returns the number of active listeners 
+    def get_num_listeners(self):
+        return len(self.listeners)
+
 myWorld = World()        
 
-def set_listener( entity, data ):
+def set_listener( ws, entity="", data=""):
     ''' do something with the update ! '''
+    # clear the world
+    if entity == "":
+        ws.send(json.dumps({}))
+    else:    
+        ws.send(json.dumps({entity:data}))
 
-myWorld.add_set_listener( set_listener )
+
         
 @app.route('/')
 def hello():
     '''Return something coherent here.. perhaps redirect to /static/index.html '''
     return redirect("/static/index.html", code=302)
 
-def read_ws(ws,client):
+def read_ws(ws):
     '''A greenlet function that reads from the websocket and updates the world'''
     # XXX: TODO IMPLEMENT ME
-    return None
+
+    try: resp = ws.receive()
+    except WebSocketError:
+        myWorld.remove_set_listener(ws)
+        return 1
+    try:resp = json.loads(resp)
+    except TypeError:
+        myWorld.remove_set_listener(ws)
+        return 1
+    if resp == {}: # Initial connection
+        ws.send(world())
+    else:
+        for entity in resp: myWorld.set(entity,resp[entity])
+
+    return 0
 
 @sockets.route('/subscribe')
 def subscribe_socket(ws):
     '''Fufill the websocket URL of /subscribe, every update notify the
        websocket and read updates from the websocket '''
     # XXX: TODO IMPLEMENT ME
-    while True:
-        message = ws.receive()
-        ws.send(message)
+    myWorld.add_set_listener( ws,set_listener )
+    shutdown = 0
+    while not shutdown:
+        shutdown = read_ws(ws)
+
 
 
 
@@ -104,24 +142,29 @@ def update(entity):
     '''update the entities via this interface'''
     resp = flask_post_json()
     myWorld.set(entity,resp)
-    return flask_post_json()
+    return json.dumps(flask_post_json())
 
 @app.route("/world", methods=['POST','GET'])    
 def world():
     '''you should probably return the world here'''
-    return myWorld.world()
+    return json.dumps(myWorld.world())
+
+@app.route("/listeners",methods=['GET','POST'])
+def listeners():
+    return "There are %d active listeners!" % myWorld.get_num_listeners()
 
 @app.route("/entity/<entity>")    
 def get_entity(entity):
     '''This is the GET version of the entity interface, return a representation of the entity'''
-    return myWorld.get(entity)
+    return json.dumps(myWorld.get(entity))
 
 
 @app.route("/clear", methods=['POST','GET'])
 def clear():
     '''Clear the world out!'''
     myWorld.clear()
-    return "The world was clear"
+    myWorld.clear_listeners()
+    return "The world was cleared!"
 
 
 

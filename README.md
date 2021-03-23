@@ -59,3 +59,13 @@ Contributors
 * Mark Galloway
 * Abram Hindle
 * Cole Mackenzie
+
+Basic usage of flask websockets came from
+https://gist.github.com/punchagan/53600958c1799c2dcf26
+
+
+Much of what is found in sockets.py and index.html came from my assignment 4:
+https://github.com/kandrosc/CMPUT404-assignment-ajax
+
+Code to create gradients on canvas came from 
+https://www.w3schools.com/Tags/tryit.asp?filename=tryhtml5_canvas_createradialgradient
